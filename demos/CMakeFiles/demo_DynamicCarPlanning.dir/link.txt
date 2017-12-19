@@ -1,0 +1,1 @@
+/usr/bin/c++   -O2 -g -DNDEBUG    CMakeFiles/demo_DynamicCarPlanning.dir/DynamicCarPlanning.cpp.o  -o ../bin/demo_DynamicCarPlanning -rdynamic ../lib/libompl.so.1.2.1 -lboost_filesystem -lboost_system -lboost_program_options -lode -lboost_serialization -lboost_filesystem -lboost_system -lpthread -Wl,-rpath,/home/shinsh/ompl-1.2.1-Source/lib 
