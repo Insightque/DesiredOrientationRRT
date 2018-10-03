@@ -1,6 +1,4 @@
 # DesiredOrientationRRT
-----
-
 
 # Instructions
 - clone repository
