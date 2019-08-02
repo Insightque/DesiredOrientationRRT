@@ -22,9 +22,12 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/MapMetaData.h>
-#include <std_msgs/Float32MultiArray.h>
 
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
 #include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <pcl/kdtree/kdtree_flann.h>
 
 #include <boost/timer/timer.hpp>
@@ -60,17 +63,25 @@ namespace og = ompl::geometric;
 typedef ob::SE2StateSpace::StateType STATETYPE;
 typedef ob::SE2StateSpace STATESPACE;
 
+typedef pcl::PointXYZI VPoint;
+typedef pcl::PointCloud<VPoint> VPointCloud;
+
 og::SimpleSetup* ss_g;
 og::SimpleSetup* ss_l;
 
 ob::StateSpacePtr g_space(new ob::DubinsStateSpace(5.88, true)); // false: forward
 ob::StateSpacePtr g_space_local(new ob::DubinsStateSpace(5.88, true)); // false: forward
 
+// for custom C blocking
+double block_pos_x;
+double block_pos_y;
+tf::Quaternion block_quat;
+bool b_block;
+
 int b_DORRT_STAR = false;
 vector<Vector3d> vPath_g;
-vector<Vector3d> vTrajec_g;
 
-double PLANNINGTIME = 9.9;
+double PLANNINGTIME = 10.0;
 double COSTTHRESHOLD = 0.0;
 double RESOLUTION = 0.3;
 
@@ -96,8 +107,6 @@ double K_ATT = 0.02;
 vector<vector<VectorXd> > g_map; //unuse
 
 ob::PlannerStatus g_solved;
-
-bool g_solved_init = false;
 
 bool b_goal;
 
@@ -825,7 +834,7 @@ void VisualizePath() {
 
 void UpdateGlobalPathData()
 {
-  if (g_solved && g_solved_init)
+  if (g_solved)
   {
     og::PathGeometric path= ss_g->getSolutionPath();
     path.interpolate(100);
@@ -902,26 +911,63 @@ void plan(bool b_goal)
   plan_init(ss_g, START_G, GOAL_G);
 
   g_solved = ss_g->solve(PLANNINGTIME);
-  g_solved_init = true;
 
-  cout << "g_sovled: " << g_solved <<", " << g_solved_init << endl;  // ed: DEBUG
+  cout << "g_sovled: " << g_solved << endl;
 
   UpdateGlobalPathData();
 
   b_goal = false;
 }
 
-// /velodyne_potetntial_array callback function
-void potential_array_callback(const std_msgs::Float32MultiArray::ConstPtr& msg)
+// /points_obstacle_registered callback function
+void points_obstacle_registered_callback(const VPointCloud::ConstPtr& msg,
+                                         tf::TransformListener *listener,
+                                         tf::StampedTransform *transform_)
 {
-  // Global Coordinate Obstacle Data and Position Data
-  vector<Vector2d> vObstacle;
-  vObstacle.push_back(Vector2d(-99999.0,-99999.0));
-
-  for(int i=0; i<int((msg->data.size()-4)/2.0); i++)
-  {
-    vObstacle.push_back(Vector2d(msg->data.at(i*2+4),msg->data.at(i*2+5)));
+  try {
+    listener->lookupTransform("odom", "camera", ros::Time(0), *transform_);
   }
+  catch (tf::TransformException ex) {
+    ROS_WARN("%s", ex.what());
+  }
+  tf::Transform inv_transform = transform_->inverse();
+
+  vector<Vector2d> vObstacle;
+
+  if(!vObstacle.empty()) vObstacle.clear();
+
+  for(auto it=msg->points.begin(); it != msg->points.end(); it++) {
+    tf::Vector3 pt = inv_transform * tf::Vector3(it->x, it->y, 0);
+    vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
+  }
+
+  // custom blocking (C-shape)
+  if(b_block) {
+    cout << "[+] custom blocking..." << endl;
+    tf::Transform transform;
+    transform.setOrigin(tf::Vector3(block_pos_x, block_pos_y,0));
+    transform.setRotation(block_quat);
+
+    for(int x=-25; x<20; x++) {
+      for(int y=-20; y<20; y++) {
+        tf::Vector3 pt;
+        if(0.1*y > 1.25 || 0.1*y < -1.25) {
+          tf::Vector3 vp = transform * tf::Vector3(0.1*x, 0.1*y, 0);
+          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
+
+          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
+        }
+        else if(0.1*x < -2) {
+          tf::Vector3 vp = transform * tf::Vector3(0.1*x, 0.1*y, 0);
+          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
+
+          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
+        }
+      }
+    }
+    b_block=false;
+  }
+
 
   if( g_pTree != NULL )
     g_pTree->clear();
@@ -959,6 +1005,16 @@ void target_parking_space_callback(const geometry_msgs::PoseStamped::ConstPtr& m
   GOAL_G[2] = tf::getYaw(msg->pose.orientation);
   b_goal = true;
 
+  // for custom blocking (C-shape)
+  block_pos_x = msg->pose.position.x;
+  block_pos_y = msg->pose.position.y;
+  block_quat.setValue(msg->pose.orientation.x,
+                      msg->pose.orientation.y,
+                      msg->pose.orientation.z,
+                      msg->pose.orientation.w);
+
+  b_block = true;
+
   plan(b_goal);
 }
 
@@ -984,10 +1040,10 @@ int main(int argc, char* argv[]) {
 
   pub_path_rrt = nh.advertise<nav_msgs::Path>("Path_RRT", 1);
 
-  sub_potential_array = nh.subscribe<std_msgs::Float32MultiArray>("velodyne_potential_array", 1, &potential_array_callback);
+  sub_potential_array = nh.subscribe<VPointCloud>("points_obstacle_registered", 1, boost::bind(&points_obstacle_registered_callback,_1,&listener, &transform));
   sub_target_parking_space = nh.subscribe<geometry_msgs::PoseStamped>("target_parking_space", 1, boost::bind(&target_parking_space_callback, _1, &listener, &transform));
 
-  cout << "START of DO-RRT*: ROS Version"<<endl;
+  cout << "[+] decision maker node has started..."<<endl;
 
   ros::spin();
 
