@@ -123,15 +123,14 @@ void DecisionMaker::magneticVectorForce(const double* init, const double* target
   double zzP = target[1];
 
   double q[3]={init[0], init[1], init[2]-RADIANS(90.0)};
-  //Eigen::MatrixXd (1,1);
 
   MatrixXd Rot(2,2);
   Rot << cos(q[2]), -sin(q[2]),
       sin(q[2]),  cos(q[2]);
 
-  MatrixXd Cm = Vector2d(q[0], q[1])+Rot*Vector2d(d/2.0,0); // Cm_ --> (2,1)
+  MatrixXd Cm = Vector2d(q[0], q[1])+Rot*Vector2d(d/2.0,0);  // Cm_ --> (2,1)
   MatrixXd Cn = Vector2d(q[0], q[1])+Rot*Vector2d(-d/2.0,0); // Cn_ --> (2,1)
-  // cout << "Cm : " << Cm << endl;                             //
+  // cout << "Cm : " << Cm << endl;
   // cout << "Cn : " << Cn << endl;
 
   MatrixXd xCm = Cm(0)*MatrixXd::Ones(1,N);
@@ -182,7 +181,7 @@ void DecisionMaker::magneticVectorForce(const double* init, const double* target
     Bx += + m*Ly(i)*rzm/r3m + n*Ly(i)*rzn/r3n;	// m & n, direction of current element..
     Bz += - m*Ly(i)*rxm/r3m - n*Ly(i)*rxn/r3n;	// m & n, direction of current element..
     // By = 0;
-    //    cout << Bx <<" "<< Bz <<" " <<endl;
+    // cout << Bx <<" "<< Bz <<" " <<endl;
   }
   B[0] += Bx;
   B[1] += Bz;
@@ -212,6 +211,7 @@ VectorXd DecisionMaker::ComputePotentialField2(double x, double y, double yaw, d
 
   std::vector<pcl::PointXYZ> obs = DecisionMaker::SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
   double sumX=0,sumY=0;
+
   //#pragma omp parallel reduction(+:sumX, sumY)
   for( int i=0; i<obs.size(); i++)
   {
@@ -329,6 +329,7 @@ VectorXd DecisionMaker::ComputeObstacleField(double x, double y)
   std::vector<pcl::PointXYZ> obs = DecisionMaker::SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
 
   double sumX=ret(2),sumY=ret(3);
+
   //#pragma omp parallel reduction(+:sumX, sumY)
   for( int i=0; i<obs.size(); i++)
   {
@@ -357,16 +358,6 @@ bool DecisionMaker::DO( double* from_d, double* to_d, double* target_d)
   {
     return false;
   }
-
-  //    if( sqrt((from_d[0]-to_d[0])*(from_d[0]-to_d[0])+(from_d[1]-to_d[1])*(from_d[1]-to_d[1]))>0 )
-  //    {
-  //cout <<"out"<<endl;
-  //       return false;
-  //    }
-  // else
-  // {
-  //  cout << "in"<<endl;
-  // }
 
   double target_ori[3];
   target_ori[0] = target_d[0];
@@ -417,31 +408,6 @@ bool DecisionMaker::DO( double* from_d, double* to_d, double* target_d)
   }
   else
   {
-#ifdef DRAW1
-    geometry_msgs::PoseStamped poseStamped;
-
-    std_msgs::Header header;
-    header.stamp = ros::Time::now();
-#ifdef DRAWVEHICLE
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[1];
-    poseStamped.pose.position.y = -target_d[0];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]-RADIANS(90));
-#else
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[0];
-    poseStamped.pose.position.y = target_d[1];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]);
-#endif
-    poseStamped.header = header;
-
-
-
-    poseStamped.pose.orientation = odom_quat;
-    g_posArray2.poses.push_back(poseStamped.pose);
-#endif
     return true;
   }
 
@@ -474,62 +440,9 @@ bool DecisionMaker::DO( double* from_d, double* to_d, double* target_d)
     target_d[0] += w1*vGradient(0);
     target_d[1] += w1*vGradient(1);
 
-#ifdef DRAW
-    geometry_msgs::PoseStamped poseStamped;
-
-    std_msgs::Header header;
-    header.stamp = ros::Time::now();
-#ifdef DRAWVEHICLE
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[1];
-    poseStamped.pose.position.y = -target_d[0];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]-RADIANS(90));
-#else
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[0];
-    poseStamped.pose.position.y = target_d[1];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]);
-#endif
-
-    poseStamped.header = header;
-
-
-
-    poseStamped.pose.orientation = odom_quat;
-    g_posArray3.poses.push_back(poseStamped.pose);
-#endif
     iter++;
   }
 
-  if( ret )
-  {
-#ifdef DRAW
-    geometry_msgs::PoseStamped poseStamped;
-
-    std_msgs::Header header;
-    header.stamp = ros::Time::now();
-#ifdef DRAWVEHICLE
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[1];
-    poseStamped.pose.position.y = -target_d[0];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]-RADIANS(90));
-#else
-    header.frame_id = "/camera";
-    poseStamped.pose.position.x = target_d[0];
-    poseStamped.pose.position.y = target_d[1];
-    poseStamped.pose.position.z = 0.0;
-    geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]);
-#endif
-    poseStamped.header = header;
-
-
-    poseStamped.pose.orientation = odom_quat;
-    g_posArray2.poses.push_back(poseStamped.pose);
-#endif
-  }
   return ret;
 }
 
@@ -564,33 +477,6 @@ VectorXd DecisionMaker::magneticfield(ob::State* target, ob::State* nouse1, ob::
 
   if( (target_d[0] == GOAL_G[0] && target_d[1] == GOAL_G[1]) )
   {
-#ifdef DRAW
-    {
-      geometry_msgs::PoseStamped poseStamped;
-
-      std_msgs::Header header;
-      header.stamp = ros::Time::now();
-#ifdef DRAWVEHICLE
-      header.frame_id = "/camera";
-      poseStamped.pose.position.x = target_d[1];
-      poseStamped.pose.position.y = -target_d[0];
-      poseStamped.pose.position.z = 0.0;
-      geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]-RADIANS(90));
-#else
-      header.frame_id = "/camera";
-      poseStamped.pose.position.x = target_d[0];
-      poseStamped.pose.position.y = target_d[1];
-      poseStamped.pose.position.z = 0.0;
-      geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]);
-#endif
-
-      poseStamped.header =header;
-
-
-      poseStamped.pose.orientation = odom_quat;
-      g_posArray1.poses.push_back(poseStamped.pose);
-    }
-#endif
     return VectorXd::Zero(2);
   }
   else
@@ -616,38 +502,6 @@ VectorXd DecisionMaker::magneticfield(ob::State* target, ob::State* nouse1, ob::
     target_d[2] =AngleUtils::toRange_PItoPI( atan2(VectorField(1), VectorField(0)));
 
     target_->setYaw(target_d[2]);
-#ifdef CONFIG_ANALYSIS
-    cout << target_d[0] << "\t"<<target_d[1] << "\t"<<target_d[2] << "\t"<<endl;
-#endif
-#ifdef DRAW
-
-    {
-      geometry_msgs::PoseStamped poseStamped;
-
-      std_msgs::Header header;
-      header.stamp = ros::Time::now();
-#ifdef DRAWVEHICLE
-      header.frame_id = "/camera";
-      poseStamped.pose.position.x = target_d[1];
-      poseStamped.pose.position.y = -target_d[0];
-      poseStamped.pose.position.z = 0.0;
-      geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]-RADIANS(90));
-#else
-      header.frame_id = "/camera";
-      poseStamped.pose.position.x = target_d[0];
-      poseStamped.pose.position.y = target_d[1];
-      poseStamped.pose.position.z = 0.0;
-      geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(target_d[2]);
-#endif
-
-
-      poseStamped.header =header;
-
-
-      poseStamped.pose.orientation = odom_quat;
-      g_posArray1.poses.push_back(poseStamped.pose);
-    }
-#endif
     return VectorXd::Zero(2);
   }
   return VectorXd::Zero(2);
@@ -661,7 +515,6 @@ bool DecisionMaker::randomCheck(ob::State* rand)
   double y =rand_->getY();
 
   return !isFreeSpace(x,y, this);
-
 }
 
 // publish data for visualization
@@ -673,18 +526,6 @@ void DecisionMaker::VisualizePath()
 
   nav_msgs::Path msg;
   msg.header = header;
-
-  g_posArray1.header = header;
-  g_msgpub1.publish(g_posArray1);
-  g_posArray1.poses.clear();
-
-  g_posArray2.header = header;
-  g_msgpub2.publish(g_posArray2);
-  g_posArray2.poses.clear();
-
-  g_posArray3.header = header;
-  g_msgpub3.publish(g_posArray3);
-  g_posArray3.poses.clear();
 
   for(int i=0;i<vPath_g.size(); i++)
   {
@@ -731,10 +572,10 @@ void DecisionMaker::UpdateGlobalPathData()
   }
 }
 
-// Planning Code
 void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
 {
   ob::ScopedState<> ss_start(g_space), ss_goal(g_space);
+
   // set the start and goal states
   ss_start[0] =start[0];
   ss_start[1] =start[1];
@@ -751,17 +592,18 @@ void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
       &isStateValid, si.get(),
       g_map, std::placeholders::_1, this));
 
+  // \todo(edward): invalid use of non-static error function (should be fixed)
+
   // // DO-RRTstar
   // if( b_DORRT_STAR != 0 )
   // {
   //   cout <<"[+] DORRT MODE"<<endl;
-  //   // \todo(edward): invalid use of non-static error function (should be fixed)
   //   ss->setPlanner(std::make_shared<ompl::geometric::RRTstar>(std::bind(ss->getSpaceInformation(), std::placeholders::_1, std::placeholders::_2, DecisionMaker::randomCheck, DecisionMaker::magneticfield, DecisionMaker::DesiredOrientation, true, false, true, "DORRTstar")));
   // }
   // // RRTstar
   // else
   {
-    cout <<"[+] RRT MODE"<<endl;
+    cout <<"[+] RRTstar is selected for planning."<<endl;
     og::RRTstar *RRTstar = new og::RRTstar(ss->getSpaceInformation());
     RRTstar->setRange(5.0);
     ss->setPlanner(ob::PlannerPtr(RRTstar));
@@ -776,14 +618,16 @@ void DecisionMaker::plan(bool b_goal)
 {
   if(!b_goal) return;
 
+  g_space->as<STATESPACE>()->setBounds(*BOUNDS);
+
+  plan_init(ss_g, START_G, GOAL_G);
+
+  cout << "[+] planning...";
+  g_solved = ss_g->solve(PLANNINGTIME);
+
   cout << "BOUNDS: " << BOUNDS->low[0] << ", " <<BOUNDS->low[1] << ", "<<BOUNDS->high[0] <<", " <<BOUNDS->high[1]<< endl;  // ed: DEBUG
   cout << "START_G: " << START_G[0] << ", " <<START_G[1] << ", "<<START_G[2] << endl;  // ed: DEBUG
   cout << "GOAL_G: " << GOAL_G[0] << ", " << GOAL_G[1] << ", " << GOAL_G[2] << endl;  // ed: DEBUG
-  g_space->as<STATESPACE>()->setBounds(*BOUNDS);
-  plan_init(ss_g, START_G, GOAL_G);
-
-  g_solved = ss_g->solve(PLANNINGTIME);
-
   cout << "g_sovled: " << g_solved << endl;
 
   UpdateGlobalPathData();
@@ -813,9 +657,10 @@ void DecisionMaker::points_obstacle_registered_callback(const VPointCloud::Const
     vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
   }
 
+  // \todo(edward): C-shape Blocking is not working properly
   // custom blocking (C-shape)
   if(b_block) {
-    cout << "[+] custom blocking..." << endl;
+    cout << "[+] Custom C-shape Blocking..." << endl;
     tf::Transform transform;
     transform.setOrigin(tf::Vector3(block_pos_x, block_pos_y,0));
     transform.setRotation(block_quat);
@@ -923,10 +768,6 @@ DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
   BOUNDS->low[1] = -50.0;
   BOUNDS->high[0] = 50.0;
   BOUNDS->high[1] = 50.0;
-
-  g_msgpub1 = nh.advertise<geometry_msgs::PoseArray>("PoseArray_RRT_1", 1);
-  g_msgpub2 = nh.advertise<geometry_msgs::PoseArray>("PoseArray_RRT_2", 1);
-  g_msgpub3 = nh.advertise<geometry_msgs::PoseArray>("PoseArray_RRT_3", 1);
 
   pub_path_rrt = nh.advertise<nav_msgs::Path>("Path_RRT", 1);
 

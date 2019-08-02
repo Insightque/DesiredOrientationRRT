@@ -27,24 +27,15 @@
 #include <pcl/point_types.h>
 #include <pcl/kdtree/kdtree_flann.h>
 
-#include <boost/timer/timer.hpp>
-#include <boost/program_options.hpp>
-#include <boost/thread/thread.hpp>
-
-#include <ompl/tools/benchmark/Benchmark.h>
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
 #include <ompl/base/spaces/SE2StateSpace.h>
 #include <ompl/base/StateSpaceTypes.h>
-#include <ompl/base/spaces/ReedsSheppStateSpace.h>
 #include <ompl/base/spaces/DubinsStateSpace.h>
 #include <ompl/base/ScopedState.h>
 #include <ompl/geometric/SimpleSetup.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
-#include <ompl/geometric/planners/cforest/CForest.h>
 
-#include <fstream>
 #include <iostream>
-#include <cmath>
 
 #define DRAW
 //#define DRAWVEHICLE
@@ -97,17 +88,10 @@ class DecisionMaker {
   bool b_goal;
 
   // Publishers & Subscribers
-  ros::Publisher g_msgpub1;
-  ros::Publisher g_msgpub2;
-  ros::Publisher g_msgpub3;
   ros::Publisher pub_path_rrt;
 
   ros::Subscriber sub_potential_array;
   ros::Subscriber sub_target_parking_space;
-
-  geometry_msgs::PoseArray g_posArray1;
-  geometry_msgs::PoseArray g_posArray2;
-  geometry_msgs::PoseArray g_posArray3;
 
   tf::TransformListener listener;
   tf::StampedTransform transform;
