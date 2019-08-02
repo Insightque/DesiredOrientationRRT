@@ -37,7 +37,7 @@
 //#define DRAWVEHICLE
 //#define CONFIG_ANALYSIS
 
-//#define ODEDEMO
+//#define ODEDEMO 
 using namespace std;
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
@@ -62,8 +62,8 @@ ofstream outFile("output.txt");
 bool CLOTHOID = false;
 //ob::StateSpacePtr g_space(new ob::DubinsStateSpace(4.88, true)); // false: forward
 //ob::StateSpacePtr g_space_local(new ob::DubinsStateSpace(4.88, true)); // false: forward
-ob::StateSpacePtr g_space(new ob::DubinsStateSpace(6, true)); // false: forward
-ob::StateSpacePtr g_space_local(new ob::DubinsStateSpace(6, true)); // false: forward
+ob::StateSpacePtr g_space(new ob::DubinsStateSpace(4, true)); // false: forward
+ob::StateSpacePtr g_space_local(new ob::DubinsStateSpace(4, true)); // false: forward
 typedef ob::SE2StateSpace::StateType STATETYPE;
 typedef ob::SE2StateSpace STATESPACE;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,7 +75,7 @@ int ITER = 1;
 int LOGFLAG=0;
 double PLANNINGTIME = 5.0;
 double PLANNINGTIME_L = 1.0;
-double COSTTHRESHOLD=0.0;
+double COSTTHRESHOLD=8.0;
 
 vector<Vector2d> OBSTACLE;
 double START_GORI[3]={0.0,0.0,RADIANS(0)};
@@ -286,6 +286,9 @@ void plan_init(og::SimpleSetup* ss,double* start, double* goal, bool isLocal = f
                 &isStateValid, si.get(),
                 g_map, std::placeholders::_1));
 
+    auto obj(std::make_shared<ob::PathLengthOptimizationObjective>(si));
+    obj->setCostThreshold(ob::Cost(COSTTHRESHOLD));
+
     if( isLocal )
     {
         //ss->setPlanner(ob::PlannerPtr(new og::CForest(ss->getSpaceInformation())));
@@ -471,7 +474,7 @@ int planner_local()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // From HeightMap Module : Local Path Update : 5hz
-void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstPtr& msg)
+void SubTopicProcess1(const std_msgs::Float32MultiArray::ConstPtr& msg) 
 // 하이트맵에서 이 것을 받는 순간의 차량의 전역 x,y,h,어쩌고, 정보(4개)와 장애물의 정보(x1,y1,x2,y2, ...)가 들어온다. 포인트 클라우드는 특정 라이다 데이터가 특정 그리드 위에 하나라도 있으면 그 그리드의 가운데 점을 주는 것이고 애초에 특정 높이로 자르고 난 뒤에 저런 정보는 받는 것이다.
 {
     UPDATINGMAP=true;
@@ -481,7 +484,7 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
 
     for(int i=0; i<int((msg->data.size()-4)/2.0); i++)//4개는 하이트맵 받는 순간의 차량의 전역 정보 4개이고 저걸 빼고 2로 나누면 총 장애물이 있는 그리드의 개수이다.
     {
-	//vObstacle.push_back(Vector2d(msg->data.at(i*2+4),msg->data.at(i*2+5)));
+	vObstacle.push_back(Vector2d(msg->data.at(i*2+4),msg->data.at(i*2+5)));
     }
     cout <<"SUBDATA"<<endl;
     
@@ -492,9 +495,9 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
 
     for(int k=0; k<vObstacle.size(); k++)
     {
-        //g_pTree->push_back(pcl::PointXYZ(vObstacle[k](0), vObstacle[k](1), 0.0)); //우선, 장애물 정보를 충돌 검사를 하기 위해서 g_pTree에 넣어 놓는다.
+        g_pTree->push_back(pcl::PointXYZ(vObstacle[k](0), vObstacle[k](1), 0.0)); //우선, 장애물 정보를 충돌 검사를 하기 위해서 g_pTree에 넣어 놓는다.
     }
-    g_pTree->push_back(pcl::PointXYZ(100, 100, 0.0));  //  임의로 장애물 하나만 넣기. 아예 없으면 오류. 장애물 고려 안하려고 사용
+    // g_pTree->push_back(pcl::PointXYZ(100, 100, 0.0));  //  임의로 장애물 하나만 넣기. 아예 없으면 오류. 장애물 고려 안하려고 사용
     g_kdTree.setInputCloud(g_pTree);// 여기까지가 저 kdTree를 이용하기 위한 기본 세팅이다.
 
     /////////////////////////////////////////////////////////////////////////////
@@ -512,24 +515,29 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
     double t_y = g_localization_map[1];
     double t_h = g_localization_map[2];
 
-    g_localization_map[0] = t_x - CAR_C2R*cos( g_localization_map[2] ); //경로가 그려지는 지점과 저 0.8 수치를 같게 하면, Rviz에서 동일한 곳에서 경로를 만들 수 있네
-    g_localization_map[1] = t_y - CAR_C2R*sin( g_localization_map[2] );
+    // g_localization_map[0] = t_x;
+    // g_localization_map[1] = t_y;
+
+    //g_localization_map[0] = t_x - 0.8*cos( g_localization_map[2] ); //경로가 그려지는 지점과 저 0.8 수치를 같게 하면, Rviz에서 동일한 곳에서 경로를 만들 수 있네
+    //g_localization_map[1] = t_y - 0.8*sin( g_localization_map[2] );
+    // g_localization_map[0] = t_x - CAR_C2R*cos( g_localization_map[2] ); //경로가 그려지는 지점과 저 0.8 수치를 같게 하면, Rviz에서 동일한 곳에서 경로를 만들 수 있네
+    // g_localization_map[1] = t_y - CAR_C2R*sin( g_localization_map[2] );
     
-    g_replan = false;                   // 우선 처음 리플레닝이 바로 하진 않으니 우선은 초기 값으로 false
-    for(int i=0; i<vPath_g.size(); i++) //우선, 전체 경로 사이즈 동안 전체 경로를 저 SearchNodeByRadiusㄹ 전역 경로 생성된 것이 있으면 그 경로 주변 0.2m 안에 장애물이 있는지 확인
+    g_replan = false;// 우선 처음 리플레닝이 바로 하진 않으니 우선은 초기 값으로 false
+    for(int i=0; i<vPath_g.size(); i++) //우선, 전체 경로 사이즈 동안 전체 경로를 저 서치노드바이레디어스로 전역 경로 생성된 것이 있으면 그 경로 주변 0.2m안에 장애물이 있는지 확인
     {
         double x=vPath_g[i][0], y=vPath_g[i][1], yaw=vPath_g[i][2];
 
         std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),0.2);
-        if( obs.size() > 0 )  // 장애물이 하나라도 지금의 전역 경로에 있으면 바로 경로 재 생성
+        if( obs.size() > 0 )// 장애물이 하나라도 지금의 전역 경로에 있으면 바로 경로 재 생성
         {
             g_replan = true;
-            break;
+            break;//for문 나가지겠지.
         }
     }
 
 
-    if ( g_solved_init == false )  //맨 처음에는 당연히 false겠네
+    if ( g_solved_init == false )//맨 처음에는 당연히 false겠네
     {
         g_replan = true;
     }
@@ -541,7 +549,7 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
         while( iterLocal < 5 )
         {
             retLocal = planner_local();
-            if( retLocal > 1 ) //경로 못 만들었다가 만들었으면 while문에서 나가자.
+            if( retLocal > 1 )//경로 못 만들었다가 만들었으면 와일문에서 나가자.
                 break;
             iterLocal++;
         }
@@ -551,7 +559,12 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
         cout <<"PATH REPLANNING - GLOBAL"<<endl;
         planner_global();
     }
-
+    else
+    {
+        //cout << "path size["<<vPath_g.size()<<"] "<<msg->data.at(0) << " "<<msg->data.at(1) <<endl;
+        //cout <<"PATH Tracking ........"<<endl;
+    }
+    
     /////////////////////////////////////////////////////////////////////
     // Pub local planner path to controller ( Global Coordinate )
     {
@@ -606,8 +619,8 @@ void velodyne_potential_array_callback(const std_msgs::Float32MultiArray::ConstP
             msg2.poses.push_back(waypt2);
         }
 
-        g_msgpub5.publish(msg2); // 최종으로 경로가 토픽으로 퍼블리쉬 되는 곳
-        g_msgpub4.publish(msg);
+        g_msgpub5.publish(msg2); 
+        g_msgpub4.publish(msg);// 최종으로 경로가 토픽으로 퍼블리쉬 되는 곳
     }
 
     UPDATINGMAP=false;
@@ -627,8 +640,9 @@ void PLANNER_FRAMEWORK()
     g_msgpub4 = node.advertise<nav_msgs::Path>("Path_RRT", 1);
     g_msgpub5 = node.advertise<nav_msgs::Path>("RNDFPathData", 1);
     
-    g_msgsub1 = node.subscribe("velodyne_potential_array", 1, &velodyne_potential_array_callback);
-
+    g_msgsub1 = node.subscribe("velodyne_potential_array", 1, SubTopicProcess1);
+    //g_msgsub2 = node.subscribe("velodyne_obstaclesGlobal", 1, SubTopicProcess2);
+    
     cout << "START of DO-RRT*: ROS Version"<<endl;
     ros::Rate loop_rate(1);
 
@@ -726,7 +740,7 @@ int main(int argc, char* argv[])
         BOUNDS.high[1] = bmaxy;
         */
         ss_g = new og::SimpleSetup(g_space);
-
+        
         ss_l = new og::SimpleSetup(g_space_local);
 
         boost::thread t=boost::thread(boost::bind(&PLANNER_FRAMEWORK));//실제로 저 플래너 프레임워크가 쓰레드로 계속 도는 것이다.
