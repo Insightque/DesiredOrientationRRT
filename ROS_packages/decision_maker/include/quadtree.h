@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef Q_MOC_RUN
 #include "nav_msgs/OccupancyGrid.h"
 #include "std_msgs/Header.h"

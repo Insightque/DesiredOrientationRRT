@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(decision_maker)
 
+add_compile_options(-std=c++11)
+
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
@@ -14,12 +16,10 @@ find_package(PCL REQUIRED QUIET COMPONENTS common)
 find_package(Qt4 REQUIRED COMPONENTS QtCore QtGui)
 SET(CMAKE_CXX_FLAGS "-std=c++0x")
 
-##################################### OMPL  ##########################################
 find_package(OMPL)
 MESSAGE( STATUS "OMPL_LIBRARY_DIRS: " ${OMPL_LIBRARIES} )
 MESSAGE( STATUS "OMPL_INCLUDE_DIRS: " ${OMPL_INCLUDE_DIRS} )
 include(${QT_USE_FILE})
-###################################################################################
 
 find_package(Boost REQUIRED COMPONENTS signals)
 
@@ -35,7 +35,7 @@ find_package(OpenMP QUIET)
 endif()
 
 catkin_package(
-#  INCLUDE_DIRS inc
+#  INCLUDE_DIRS include
 #  LIBRARIES lib
   CATKIN_DEPENDS 
     roscpp 
@@ -48,18 +48,24 @@ include_directories(
   ${Eigen_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIR}
   ${OMPL_INCLUDE_DIRS}
+  include/
 )
 
-set( HDR_FILES_QT_UI_NODE inc/quadtree.h)
-set( SRC_FILES_QT_UI_NODE src/decision_maker_ros.cpp ${MOC_FILES})
+set( HDR_FILES_QT_UI_NODE
+  include/quadtree.h)
+
+set( SRC_FILES_QT_UI_NODE
+  src/decision_maker.cpp
+  src/decision_maker_node.cpp
+  ${MOC_FILES})
+
 QT4_WRAP_CPP(MOC_SRC_H_QT_UI_NODE ${HDR_FILES_QT_UI_NODE})
 
-## Declare a cpp executable
 add_executable(decision_maker
   ${SRC_FILES_QT_UI_NODE}
   ${HDR_FILES_QT_UI_NODE}
-  ${MOC_SRC_H_QT_UI_NODE} )
-
+  ${MOC_SRC_H_QT_UI_NODE}
+  )
 target_link_libraries(decision_maker
    ${QT_LIBRARIES}
    ${catkin_LIBRARIES}

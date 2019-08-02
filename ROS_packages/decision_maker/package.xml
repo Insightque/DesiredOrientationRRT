@@ -1,13 +1,18 @@
 <?xml version="1.0"?>
 <package>
   <name>decision_maker</name>
-  <version>0.0.0</version>
-  <description>The decision_maker package</description>
+  
+  <version>0.1.0</version>
+  
+  <description>
+    The decision_maker package from DYROS Laboaratory, Seoul National University.
+    Original Verision is written by Seho Shin.
+    Mostly modified by Edwrad Gyu Beom Im.
+  </description>
 
-  <maintainer email="dyros-vehicle@todo.todo">dyros-vehicle</maintainer>
+  <maintainer email="edwardim@snu.ac.kr">Edward Gyu Beom Im</maintainer>
 
-  <license>TODO</license>
-
+  <license>MIT</license>
 
   <build_depend>message_generation</build_depend>
   

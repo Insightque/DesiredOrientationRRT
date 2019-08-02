@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef Q_MOC_RUN
 #include <iostream>
 #include <vector>

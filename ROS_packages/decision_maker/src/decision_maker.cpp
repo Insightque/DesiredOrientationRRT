@@ -1,167 +1,99 @@
-#ifndef Q_MOC_RUN
-#include "../inc/quadtree.h"
-#include "../inc/ebandmanager.h"
+#include "decision_maker.h"
 
-#include <ros/ros.h>
+namespace planner {
 
-#include <Eigen/Core>
-#include <Eigen/Geometry>
-
-#include <GeometricUtils.h>
-#include <MathParam.h>
-#include <AngleUtils.h>
-
-#include <tf/tf.h>
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
-
-#include <nav_msgs/Path.h>
-#include <geometry_msgs/Twist.h>
-#include <geometry_msgs/PoseArray.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <nav_msgs/OccupancyGrid.h>
-#include <nav_msgs/MapMetaData.h>
-
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/kdtree/kdtree_flann.h>
-
-#include <boost/timer/timer.hpp>
-#include <boost/program_options.hpp>
-#include <boost/thread/thread.hpp>
-
-#include <ompl/tools/benchmark/Benchmark.h>
-#include <ompl/base/objectives/PathLengthOptimizationObjective.h>
-#include <ompl/base/spaces/SE2StateSpace.h>
-#include <ompl/base/StateSpaceTypes.h>
-#include <ompl/base/spaces/ReedsSheppStateSpace.h>
-#include <ompl/base/spaces/DubinsStateSpace.h>
-#include <ompl/base/ScopedState.h>
-#include <ompl/geometric/SimpleSetup.h>
-#include <ompl/geometric/planners/rrt/RRTstar.h>
-#include <ompl/geometric/planners/cforest/CForest.h>
-
-#include <fstream>
-#include <iostream>
-#include <cmath>
-
-#define DRAW
-//#define DRAWVEHICLE
-//#define CONFIG_ANALYSIS
-
-#endif
-
-using namespace std;
-
-namespace ob = ompl::base;
-namespace og = ompl::geometric;
-
-typedef ob::SE2StateSpace::StateType STATETYPE;
-typedef ob::SE2StateSpace STATESPACE;
-
-typedef pcl::PointXYZI VPoint;
-typedef pcl::PointCloud<VPoint> VPointCloud;
-
-og::SimpleSetup* ss_g;
-og::SimpleSetup* ss_l;
-
-ob::StateSpacePtr g_space(new ob::DubinsStateSpace(5.88, true)); // false: forward
-ob::StateSpacePtr g_space_local(new ob::DubinsStateSpace(5.88, true)); // false: forward
-
-// for custom C blocking
-double block_pos_x;
-double block_pos_y;
-tf::Quaternion block_quat;
-bool b_block;
-
-int b_DORRT_STAR = false;
-vector<Vector3d> vPath_g;
-
-double PLANNINGTIME = 10.0;
-double COSTTHRESHOLD = 0.0;
-double RESOLUTION = 0.3;
-
-vector<Vector2d> OBSTACLE;
-
-double START_G[3]={0.0,0.0,RADIANS(0)};
-double GOAL_G[3]={0.0,0.0,RADIANS(0)};
-
-//For local planner
-double START_L[3]={0.0,0.0,RADIANS(0)};
-double GOAL_L[3]={0.0,0.0,RADIANS(0)};
-
-ob::RealVectorBounds BOUNDS(2);
-
-double SAFEREGION = 0.6;
-
-double RANGE_OBS = 30.0;
-double K_REP_OBS = 10.0f;
-double RANGE_REP= 10.0;
-double K_REP = 10.0;
-double K_ATT = 0.02;
-
-vector<vector<VectorXd> > g_map; //unuse
-
-ob::PlannerStatus g_solved;
-
-bool b_goal;
-
-double VEHICLEPOS_TMP[4]={0,0,0,0};
-
-// KD TREE : Obstacle
-pcl::PointCloud<pcl::PointXYZ>::Ptr g_pTree;
-pcl::KdTreeFLANN<pcl::PointXYZ> g_kdTree;
-
-// KD TREE : Path
-pcl::PointCloud<pcl::PointXYZ>::Ptr g_pTree_Path;
-pcl::KdTreeFLANN<pcl::PointXYZ> g_kdTree_Path;
-
-// Publishers & Subscribers
-ros::Publisher g_msgpub1;
-ros::Publisher g_msgpub2;
-ros::Publisher g_msgpub3;
-ros::Publisher pub_path_rrt;
-
-ros::Subscriber sub_potential_array;
-ros::Subscriber sub_target_parking_space;
-
-geometry_msgs::PoseArray g_posArray1;
-geometry_msgs::PoseArray g_posArray2;
-geometry_msgs::PoseArray g_posArray3;
-
-ob::OptimizationObjectivePtr getThresholdPathLengthObj(const ob::SpaceInformationPtr& si)
-{
-  auto obj(std::make_shared<ob::PathLengthOptimizationObjective>(si));
-  obj->setCostThreshold(ob::Cost(COSTTHRESHOLD));
-  return obj;
-}
-
-int SearchNearestNodeIdxByRadius(pcl::PointXYZ searchPoint, float radius)
+std::vector<pcl::PointXYZ> SearchNodeByRadius(pcl::PointXYZ searchPoint, float radius, const DecisionMaker* dm)
 {
   std::vector<int> pointIdxRadiusSearch;
   std::vector<float> pointRadiusSquaredDistance;
 
   std::vector<pcl::PointXYZ> pvNode;
 
-  if( g_kdTree_Path.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
+  if( dm->g_kdTree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
+  {
+    for (size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+    {
+      pvNode.push_back(dm->g_pTree->points[pointIdxRadiusSearch[i]]);
+    }
+  }
+  return pvNode;
+}
+
+bool isFreeSpace(float x, float y, const DecisionMaker* dm)
+{
+  bool isFreeSpace = true;
+
+  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0), dm->SAFEREGION, dm);
+
+  if( obs.size() > 0 )
+    isFreeSpace = false;
+
+  return isFreeSpace;
+}
+
+bool isFreeSpace_(float x, float y, const DecisionMaker* dm)
+{
+  bool isFreeSpace = true;
+
+  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),1.414, dm);
+
+  if( obs.size() > 0 )
+    isFreeSpace = false;
+
+  return isFreeSpace;
+}
+
+bool isValid(double x, double y, double yaw, const DecisionMaker* dm)
+{
+  double _x = x + 0.2*cos(yaw);
+  double _y = y + 0.2*sin(yaw);
+
+  bool isFreeSpace1 = isFreeSpace_(_x,_y,dm);
+
+  _x = x + 1.2*cos(yaw);
+  _y = y + 1.2*sin(yaw);
+
+  bool isFreeSpace2 = isFreeSpace_(_x,_y,dm);
+
+  _x = x + 2.2*cos(yaw);
+  _y = y + 2.2*sin(yaw);
+
+  bool isFreeSpace3 = isFreeSpace_(_x,_y,dm);
+
+  return isFreeSpace1 && isFreeSpace2 && isFreeSpace3;
+}
+
+bool isStateValid(const ob::SpaceInformation *si,
+                  const vector<vector<VectorXd> >& map,
+                  const ob::State *state,
+                  const DecisionMaker* dm)
+{
+  const STATETYPE *s = state->as<STATETYPE>();
+  return si->satisfiesBounds(s) && isValid(s->getX(),s->getY(),s->getYaw(), dm);
+}
+
+int DecisionMaker::SearchNearestNodeIdxByRadius(pcl::PointXYZ searchPoint, float radius)
+{
+  std::vector<int> pointIdxRadiusSearch;
+  std::vector<float> pointRadiusSquaredDistance;
+
+  std::vector<pcl::PointXYZ> pvNode;
+
+  if(g_kdTree_Path.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
   {
     return pointIdxRadiusSearch[0];
   }
   return -1;
 }
 
-std::vector<pcl::PointXYZ> SearchNodeByRadius(pcl::PointXYZ searchPoint, float radius)
+std::vector<pcl::PointXYZ> DecisionMaker::SearchNodeByRadius(pcl::PointXYZ searchPoint, float radius)
 {
   std::vector<int> pointIdxRadiusSearch;
   std::vector<float> pointRadiusSquaredDistance;
 
   std::vector<pcl::PointXYZ> pvNode;
 
-  if( g_kdTree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
+  if(g_kdTree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
   {
     for (size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
     {
@@ -171,14 +103,21 @@ std::vector<pcl::PointXYZ> SearchNodeByRadius(pcl::PointXYZ searchPoint, float r
   return pvNode;
 }
 
-void magneticVectorForce(const double* init, const double* target, double *B)
+ob::OptimizationObjectivePtr DecisionMaker::getThresholdPathLengthObj(const ob::SpaceInformationPtr& si)
+{
+  auto obj(std::make_shared<ob::PathLengthOptimizationObjective>(si));
+  obj->setCostThreshold(ob::Cost(COSTTHRESHOLD));
+  return obj;
+}
+
+void DecisionMaker::magneticVectorForce(const double* init, const double* target, double *B)
 {
   double ln = 60.0; 	// Length of conductors
-  double d = 1.61/2.0;		// Distance between the conductors m & n
+  double d = 1.61/2.0;	// Distance between the conductors m & n
   int m = 1; 		// Direction of current through the conductor, m(Right) 1(INTO), -1(OUT)
   int n = -1; 		// Direction of current through the conductor, n(Left) 1(INTO), -1(OUT)
   int N = 12; 		// Number sections/elements in the conductors
-  int dl = ln/N; 		// Length of each element
+  int dl = ln/N; 	// Length of each element
 
   double xxP = target[0];
   double zzP = target[1];
@@ -249,24 +188,21 @@ void magneticVectorForce(const double* init, const double* target, double *B)
   B[1] += Bz;
 }
 
-double computeRepulsiveForce(double K, double dist, double range, double x, double tar_x)
+double DecisionMaker::computeRepulsiveForce(double K, double dist, double range, double x, double tar_x)
 {
-  // cout <<"A "<< dist << " " << range <<" " << x << " " << tar_x << " " << K*((1.0f/dist)-(1.0f/range))*(1.0f/(dist*dist*dist))*(x-tar_x) << endl;
-
   if( dist <= range )
     return K*((1.0f/dist)-(1.0f/range))*(1.0f/(dist*dist))*(x-tar_x);
   else
     return 0;
-
 }
 
-double computeAttractiveForce(double K, double x, double tar_x)
+double DecisionMaker::computeAttractiveForce(double K, double x, double tar_x)
 {
   return -1.0f * K * (x - tar_x);
 }
 
 
-VectorXd ComputePotentialField2(double x, double y, double yaw, double* start, double* goal)
+VectorXd DecisionMaker::ComputePotentialField2(double x, double y, double yaw, double* start, double* goal)
 {
   Vector3d ret = Vector3d::Zero(3);
 
@@ -274,7 +210,7 @@ VectorXd ComputePotentialField2(double x, double y, double yaw, double* start, d
   ran(0) = cos(yaw);
   ran(1) = sin(yaw);
 
-  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
+  std::vector<pcl::PointXYZ> obs = DecisionMaker::SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
   double sumX=0,sumY=0;
   //#pragma omp parallel reduction(+:sumX, sumY)
   for( int i=0; i<obs.size(); i++)
@@ -383,14 +319,14 @@ VectorXd ComputePotentialField2(double x, double y, double yaw, double* start, d
   return ret;
 }
 
-VectorXd ComputeObstacleField(double x, double y)
+VectorXd DecisionMaker::ComputeObstacleField(double x, double y)
 {
   VectorXd ret = VectorXd::Zero(5);
 
   ret(0) = x;
   ret(1) = y;
 
-  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
+  std::vector<pcl::PointXYZ> obs = DecisionMaker::SearchNodeByRadius(pcl::PointXYZ(x,y,0),RANGE_OBS);
 
   double sumX=ret(2),sumY=ret(3);
   //#pragma omp parallel reduction(+:sumX, sumY)
@@ -414,66 +350,12 @@ VectorXd ComputeObstacleField(double x, double y)
   return ret;
 }
 
-bool isFreeSpace(float x, float y)
+
+bool DecisionMaker::DO( double* from_d, double* to_d, double* target_d)
 {
-  bool isFreeSpace = true;
-
-  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),SAFEREGION);
-
-  if( obs.size() > 0 )
-    isFreeSpace = false;
-
-  return isFreeSpace;
-}
-
-bool isFreeSpace_(float x, float y)
-{
-  bool isFreeSpace = true;
-
-  std::vector<pcl::PointXYZ> obs = SearchNodeByRadius(pcl::PointXYZ(x,y,0),1.414);
-
-  if( obs.size() > 0 )
-    isFreeSpace = false;
-
-  return isFreeSpace;
-}
-
-bool isValid(double x, double y, double yaw)
-{
-  double _x = x + 0.2*cos(yaw);
-  double _y = y + 0.2*sin(yaw);
-
-  bool isFreeSpace1 = isFreeSpace_(_x,_y);
-
-  _x = x + 1.2*cos(yaw);
-  _y = y + 1.2*sin(yaw);
-
-  bool isFreeSpace2 = isFreeSpace_(_x,_y);
-
-  _x = x + 2.2*cos(yaw);
-  _y = y + 2.2*sin(yaw);
-
-  bool isFreeSpace3 = isFreeSpace_(_x,_y);
-
-  return isFreeSpace1 && isFreeSpace2 && isFreeSpace3;
-}
-
-bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
-{
-  //  return false;
-  if( isLocal )
+  if( (to_d[0] == GOAL_G[0] && to_d[1] == GOAL_G[1]) )
   {
-    if( (to_d[0] == GOAL_L[0] && to_d[1] == GOAL_L[1]) )
-    {
-      return false;
-    }
-  }
-  else
-  {
-    if( (to_d[0] == GOAL_G[0] && to_d[1] == GOAL_G[1]) )
-    {
-      return false;
-    }
+    return false;
   }
 
   //    if( sqrt((from_d[0]-to_d[0])*(from_d[0]-to_d[0])+(from_d[1]-to_d[1])*(from_d[1]-to_d[1]))>0 )
@@ -536,7 +418,6 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
   else
   {
 #ifdef DRAW1
-    ////////////////////////////////////////
     geometry_msgs::PoseStamped poseStamped;
 
     std_msgs::Header header;
@@ -560,7 +441,6 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
 
     poseStamped.pose.orientation = odom_quat;
     g_posArray2.poses.push_back(poseStamped.pose);
-    ////////////////////////////////////////
 #endif
     return true;
   }
@@ -586,7 +466,7 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
     //randValue=0.0;
     target_d[2] =AngleUtils::toRange_PItoPI( atan2(B[1], B[0])+randValue);
 
-    if( isValid(target_d[0], target_d[1], target_d[2]) )
+    if( isValid(target_d[0], target_d[1], target_d[2], this) )
     {
       ret = true;
       break;
@@ -595,7 +475,6 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
     target_d[1] += w1*vGradient(1);
 
 #ifdef DRAW
-    ////////////////////////////////////////
     geometry_msgs::PoseStamped poseStamped;
 
     std_msgs::Header header;
@@ -620,7 +499,6 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
 
     poseStamped.pose.orientation = odom_quat;
     g_posArray3.poses.push_back(poseStamped.pose);
-    ////////////////////////////////////////
 #endif
     iter++;
   }
@@ -628,7 +506,6 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
   if( ret )
   {
 #ifdef DRAW
-    ////////////////////////////////////////
     geometry_msgs::PoseStamped poseStamped;
 
     std_msgs::Header header;
@@ -651,13 +528,12 @@ bool DO( double* from_d, double* to_d, double* target_d, bool isLocal = false)
 
     poseStamped.pose.orientation = odom_quat;
     g_posArray2.poses.push_back(poseStamped.pose);
-    ////////////////////////////////////////
 #endif
   }
   return ret;
 }
 
-bool DesiredOrientation(ob::State* from, ob::State* to, ob::State* target)
+bool DecisionMaker::DesiredOrientation(ob::State* from, ob::State* to, ob::State* target)
 {
   STATETYPE *from_ = from->as<STATETYPE>();
   STATETYPE *to_ = to->as<STATETYPE>();
@@ -677,7 +553,7 @@ bool DesiredOrientation(ob::State* from, ob::State* to, ob::State* target)
   return false;
 }
 
-VectorXd magneticfield(ob::State* target, ob::State* nouse1, ob::State* nouse2) //rstate, NULL, NULL
+VectorXd DecisionMaker::magneticfield(ob::State* target, ob::State* nouse1, ob::State* nouse2) //rstate, NULL, NULL
 {
   //    return VectorXd::Zero(2);
   STATETYPE *target_ = target->as<STATETYPE>();
@@ -777,25 +653,20 @@ VectorXd magneticfield(ob::State* target, ob::State* nouse1, ob::State* nouse2) 
   return VectorXd::Zero(2);
 }
 
-bool randomCheck(ob::State* rand)
+bool DecisionMaker::randomCheck(ob::State* rand)
 {
   STATETYPE *rand_ = rand->as<STATETYPE>();
 
   double x = rand_->getX();
   double y =rand_->getY();
 
-  return !isFreeSpace(x,y);
+  return !isFreeSpace(x,y, this);
 
-}
-
-bool isStateValid(const ob::SpaceInformation *si, const vector<vector<VectorXd> >& map, const ob::State *state)
-{
-  const STATETYPE *s = state->as<STATETYPE>();
-  return si->satisfiesBounds(s) && isValid(s->getX(),s->getY(),s->getYaw());
 }
 
 // publish data for visualization
-void VisualizePath() {
+void DecisionMaker::VisualizePath()
+{
   std_msgs::Header header;
   header.stamp = ros::Time::now();
   header.frame_id = "/camera";
@@ -832,7 +703,7 @@ void VisualizePath() {
   pub_path_rrt.publish(msg);
 }
 
-void UpdateGlobalPathData()
+void DecisionMaker::UpdateGlobalPathData()
 {
   if (g_solved)
   {
@@ -861,10 +732,9 @@ void UpdateGlobalPathData()
 }
 
 // Planning Code
-void plan_init(og::SimpleSetup* ss,double* start, double* goal)
+void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
 {
   ob::ScopedState<> ss_start(g_space), ss_goal(g_space);
-  ////////////////////////////////
   // set the start and goal states
   ss_start[0] =start[0];
   ss_start[1] =start[1];
@@ -877,16 +747,19 @@ void plan_init(og::SimpleSetup* ss,double* start, double* goal)
 
   // set state validity checking for this space
   ob::SpaceInformationPtr si(ss->getSpaceInformation());
-  ss->setStateValidityChecker(std::bind(&isStateValid, si.get(),g_map, std::placeholders::_1));
+  ss->setStateValidityChecker(std::bind(
+      &isStateValid, si.get(),
+      g_map, std::placeholders::_1, this));
 
-  // DO-RRTstar
-  if( b_DORRT_STAR != 0 )
-  {
-    cout <<"[+] DORRT MODE"<<endl;
-    ss->setPlanner(std::make_shared<ompl::geometric::RRTstar>(ss->getSpaceInformation(),randomCheck,magneticfield, DesiredOrientation,true,false,true,"DORRTstar"));
-  }
-  // RRTstar
-  else
+  // // DO-RRTstar
+  // if( b_DORRT_STAR != 0 )
+  // {
+  //   cout <<"[+] DORRT MODE"<<endl;
+  //   // \todo(edward): invalid use of non-static error function (should be fixed)
+  //   ss->setPlanner(std::make_shared<ompl::geometric::RRTstar>(std::bind(ss->getSpaceInformation(), std::placeholders::_1, std::placeholders::_2, DecisionMaker::randomCheck, DecisionMaker::magneticfield, DecisionMaker::DesiredOrientation, true, false, true, "DORRTstar")));
+  // }
+  // // RRTstar
+  // else
   {
     cout <<"[+] RRT MODE"<<endl;
     og::RRTstar *RRTstar = new og::RRTstar(ss->getSpaceInformation());
@@ -899,15 +772,14 @@ void plan_init(og::SimpleSetup* ss,double* start, double* goal)
   ss->setup();
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void plan(bool b_goal)
+void DecisionMaker::plan(bool b_goal)
 {
   if(!b_goal) return;
 
-  cout << "BOUNDS: " << BOUNDS.low[0] << ", " <<BOUNDS.low[1] << ", "<<BOUNDS.high[0] <<", " <<BOUNDS.high[1]<< endl;  // ed: DEBUG
+  cout << "BOUNDS: " << BOUNDS->low[0] << ", " <<BOUNDS->low[1] << ", "<<BOUNDS->high[0] <<", " <<BOUNDS->high[1]<< endl;  // ed: DEBUG
   cout << "START_G: " << START_G[0] << ", " <<START_G[1] << ", "<<START_G[2] << endl;  // ed: DEBUG
   cout << "GOAL_G: " << GOAL_G[0] << ", " << GOAL_G[1] << ", " << GOAL_G[2] << endl;  // ed: DEBUG
-  g_space->as<STATESPACE>()->setBounds(BOUNDS);
+  g_space->as<STATESPACE>()->setBounds(*BOUNDS);
   plan_init(ss_g, START_G, GOAL_G);
 
   g_solved = ss_g->solve(PLANNINGTIME);
@@ -920,9 +792,9 @@ void plan(bool b_goal)
 }
 
 // /points_obstacle_registered callback function
-void points_obstacle_registered_callback(const VPointCloud::ConstPtr& msg,
-                                         tf::TransformListener *listener,
-                                         tf::StampedTransform *transform_)
+void DecisionMaker::points_obstacle_registered_callback(const VPointCloud::ConstPtr& msg,
+                                                        tf::TransformListener *listener,
+                                                        tf::StampedTransform *transform_)
 {
   try {
     listener->lookupTransform("odom", "camera", ros::Time(0), *transform_);
@@ -983,9 +855,9 @@ void points_obstacle_registered_callback(const VPointCloud::ConstPtr& msg,
 }
 
 // /target_parking_space callback function
-void target_parking_space_callback(const geometry_msgs::PoseStamped::ConstPtr& msg,
-                                   tf::TransformListener *listener,
-                                   tf::StampedTransform *transform_)
+void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamped::ConstPtr& msg,
+                                                  tf::TransformListener *listener,
+                                                  tf::StampedTransform *transform_)
 {
   try {
     listener->lookupTransform("odom", "camera", ros::Time(0), *transform_);
@@ -1018,21 +890,39 @@ void target_parking_space_callback(const geometry_msgs::PoseStamped::ConstPtr& m
   plan(b_goal);
 }
 
-int main(int argc, char* argv[]) {
+DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
+{
+  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(5.88, true)); // false: forward
   ss_g = new og::SimpleSetup(g_space);
-  ss_l = new og::SimpleSetup(g_space_local);
 
-  ros::init(argc, argv, "decision_maker_node");
-  ros::NodeHandle nh;
-  ros::NodeHandle priv_nh("~");
+  b_DORRT_STAR = false;
 
-  tf::TransformListener listener;
-  tf::StampedTransform transform;
+  PLANNINGTIME = 10.0;
+  COSTTHRESHOLD = 0.0;
+  RESOLUTION = 0.3;
 
-  BOUNDS.low[0] = -50.0;
-  BOUNDS.low[1] = -50.0;
-  BOUNDS.high[0] = 50.0;
-  BOUNDS.high[1] = 50.0;
+  START_G[0] = 0.0;
+  START_G[1] = 0.0;
+  START_G[2] = 0.0;
+
+  GOAL_G[0] = 0.0;
+  GOAL_G[1] = 0.0;
+  GOAL_G[2] = 0.0;
+
+  BOUNDS = new ob::RealVectorBounds(2);
+
+  SAFEREGION = 0.6;
+
+  RANGE_OBS = 30.0;
+  K_REP_OBS = 10.0f;
+  RANGE_REP= 10.0;
+  K_REP = 10.0;
+  K_ATT = 0.02;
+
+  BOUNDS->low[0] = -50.0;
+  BOUNDS->low[1] = -50.0;
+  BOUNDS->high[0] = 50.0;
+  BOUNDS->high[1] = 50.0;
 
   g_msgpub1 = nh.advertise<geometry_msgs::PoseArray>("PoseArray_RRT_1", 1);
   g_msgpub2 = nh.advertise<geometry_msgs::PoseArray>("PoseArray_RRT_2", 1);
@@ -1040,12 +930,7 @@ int main(int argc, char* argv[]) {
 
   pub_path_rrt = nh.advertise<nav_msgs::Path>("Path_RRT", 1);
 
-  sub_potential_array = nh.subscribe<VPointCloud>("points_obstacle_registered", 1, boost::bind(&points_obstacle_registered_callback,_1,&listener, &transform));
-  sub_target_parking_space = nh.subscribe<geometry_msgs::PoseStamped>("target_parking_space", 1, boost::bind(&target_parking_space_callback, _1, &listener, &transform));
-
-  cout << "[+] decision maker node has started..."<<endl;
-
-  ros::spin();
-
-  return 0;
+  sub_potential_array = nh.subscribe<VPointCloud>("points_obstacle_registered", 1, boost::bind(&DecisionMaker::points_obstacle_registered_callback,this,_1,&listener, &transform));
+  sub_target_parking_space = nh.subscribe<geometry_msgs::PoseStamped>("target_parking_space", 1, boost::bind(&DecisionMaker::target_parking_space_callback,this, _1, &listener, &transform));
 }
+}  // end of namespace planner
