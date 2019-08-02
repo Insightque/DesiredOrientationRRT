@@ -763,9 +763,9 @@ DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
 
   b_DORRT_STAR = false;
 
-  PLANNINGTIME = 10.0;
+  PLANNINGTIME = 2.0;
   COSTTHRESHOLD = 0.0;
-  RESOLUTION = 0.3;
+  RESOLUTION = 0.99;  // default: 0.3
 
   START_G[0] = 0.0;
   START_G[1] = 0.0;
@@ -777,7 +777,7 @@ DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
 
   BOUNDS = new ob::RealVectorBounds(2);
 
-  SAFEREGION = 0.6;
+  SAFEREGION = 0.5;
 
   RANGE_OBS = 30.0;
   K_REP_OBS = 10.0f;
