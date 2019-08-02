@@ -83,7 +83,10 @@ class DecisionMaker {
 
   bool b_goal;
 
+  vector<Vector2d> vObstacle;
+
   // Publishers & Subscribers
+  ros::Publisher pub_c_blocking;
   ros::Publisher pub_path_rrt;
 
   ros::Subscriber sub_potential_array;
@@ -111,14 +114,6 @@ class DecisionMaker {
   VectorXd ComputePotentialField2(double x, double y, double yaw, double* start, double* goal);
 
   VectorXd ComputeObstacleField(double x, double y);
-
-  // bool isFreeSpace(float x, float y);
-
-  // bool isFreeSpace_(float x, float y);
-
-  // bool isValid(double x, double y, double yaw);
-
-  // bool isStateValid(const ob::SpaceInformation *si, const vector<vector<VectorXd> >& map, const ob::State *state);
 
   bool DO( double* from_d, double* to_d, double* target_d);
 

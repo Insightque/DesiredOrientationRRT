@@ -603,7 +603,7 @@ void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
   // // RRTstar
   // else
   {
-    cout <<"[+] RRTstar is selected for planning."<<endl;
+    cout <<"[+] RRTstar is selected for planning"<<endl;
     og::RRTstar *RRTstar = new og::RRTstar(ss->getSpaceInformation());
     RRTstar->setRange(5.0);
     ss->setPlanner(ob::PlannerPtr(RRTstar));
@@ -622,12 +622,13 @@ void DecisionMaker::plan(bool b_goal)
 
   plan_init(ss_g, START_G, GOAL_G);
 
-  cout << "[+] planning...";
-  g_solved = ss_g->solve(PLANNINGTIME);
-
   cout << "BOUNDS: " << BOUNDS->low[0] << ", " <<BOUNDS->low[1] << ", "<<BOUNDS->high[0] <<", " <<BOUNDS->high[1]<< endl;  // ed: DEBUG
   cout << "START_G: " << START_G[0] << ", " <<START_G[1] << ", "<<START_G[2] << endl;  // ed: DEBUG
   cout << "GOAL_G: " << GOAL_G[0] << ", " << GOAL_G[1] << ", " << GOAL_G[2] << endl;  // ed: DEBUG
+
+  cout << "[+] planning..." << endl;
+  g_solved = ss_g->solve(PLANNINGTIME);
+
   cout << "g_sovled: " << g_solved << endl;
 
   UpdateGlobalPathData();
@@ -648,43 +649,12 @@ void DecisionMaker::points_obstacle_registered_callback(const VPointCloud::Const
   }
   tf::Transform inv_transform = transform_->inverse();
 
-  vector<Vector2d> vObstacle;
-
   if(!vObstacle.empty()) vObstacle.clear();
 
   for(auto it=msg->points.begin(); it != msg->points.end(); it++) {
     tf::Vector3 pt = inv_transform * tf::Vector3(it->x, it->y, 0);
     vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
   }
-
-  // \todo(edward): C-shape Blocking is not working properly
-  // custom blocking (C-shape)
-  if(b_block) {
-    cout << "[+] Custom C-shape Blocking..." << endl;
-    tf::Transform transform;
-    transform.setOrigin(tf::Vector3(block_pos_x, block_pos_y,0));
-    transform.setRotation(block_quat);
-
-    for(int x=-25; x<20; x++) {
-      for(int y=-20; y<20; y++) {
-        tf::Vector3 pt;
-        if(0.1*y > 1.25 || 0.1*y < -1.25) {
-          tf::Vector3 vp = transform * tf::Vector3(0.1*x, 0.1*y, 0);
-          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
-
-          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
-        }
-        else if(0.1*x < -2) {
-          tf::Vector3 vp = transform * tf::Vector3(0.1*x, 0.1*y, 0);
-          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
-
-          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
-        }
-      }
-    }
-    b_block=false;
-  }
-
 
   if( g_pTree != NULL )
     g_pTree->clear();
@@ -711,9 +681,9 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
     ROS_WARN("%s", ex.what());
   }
 
-  tf::Transform inv_transform_ = transform_->inverse();
+  tf::Transform inv_transform = transform_->inverse();
 
-  tf::Vector3 goal = inv_transform_ * tf::Vector3(msg->pose.position.x,
+  tf::Vector3 goal = inv_transform * tf::Vector3(msg->pose.position.x,
                                                   msg->pose.position.y,
                                                   0);
 
@@ -732,12 +702,63 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
 
   b_block = true;
 
-  plan(b_goal);
+  // \todo(edward): C-shape Blocking is not working properly
+  // custom blocking (C-shape)
+  if(b_block) {
+    cout << "[+] Custom C-shape Blocking..." << endl;
+    tf::Transform tf_block;
+    tf_block.setOrigin(tf::Vector3(block_pos_x, block_pos_y,0));
+    tf_block.setRotation(block_quat);
+
+    VPoint vpt;
+    VPointCloud block_cloud;
+    tf::Vector3 pt;
+    for(int x=-12; x<5; x++) {
+      for(int y=-10; y<10; y++) {
+        if(0.2*y > 1.75 || 0.2*y < -1.75) {
+          tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
+          vpt.x = vp.getX();
+          vpt.y = vp.getY();
+          block_cloud.points.push_back(vpt);
+
+          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
+          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
+        }
+        else if(0.2*x < -2) {
+          tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
+          vpt.x = vp.getX();
+          vpt.y = vp.getY();
+          block_cloud.points.push_back(vpt);
+
+          pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
+          vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
+        }
+      }
+    }
+    block_cloud.header.frame_id = "camera_init";
+    pub_c_blocking.publish(block_cloud);
+
+    if( g_pTree != NULL )
+      g_pTree->clear();
+
+    g_pTree  = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+
+    for(int k=0; k<vObstacle.size(); k++)
+    {
+      g_pTree->push_back(pcl::PointXYZ(vObstacle[k](0), vObstacle[k](1), 0.0));
+    }
+
+    g_kdTree.setInputCloud(g_pTree);
+
+    b_block=false;
+
+    plan(b_goal);
+  }
 }
 
 DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
 {
-  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(5.88, true)); // false: forward
+  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(4, true)); // false: forward
   ss_g = new og::SimpleSetup(g_space);
 
   b_DORRT_STAR = false;
@@ -764,12 +785,15 @@ DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
   K_REP = 10.0;
   K_ATT = 0.02;
 
+  b_block = false;
+
   BOUNDS->low[0] = -50.0;
   BOUNDS->low[1] = -50.0;
   BOUNDS->high[0] = 50.0;
   BOUNDS->high[1] = 50.0;
 
   pub_path_rrt = nh.advertise<nav_msgs::Path>("Path_RRT", 1);
+  pub_c_blocking = nh.advertise<VPointCloud>("c_block_points", 1);
 
   sub_potential_array = nh.subscribe<VPointCloud>("points_obstacle_registered", 1, boost::bind(&DecisionMaker::points_obstacle_registered_callback,this,_1,&listener, &transform));
   sub_target_parking_space = nh.subscribe<geometry_msgs::PoseStamped>("target_parking_space", 1, boost::bind(&DecisionMaker::target_parking_space_callback,this, _1, &listener, &transform));
