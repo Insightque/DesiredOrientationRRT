@@ -36,10 +36,6 @@
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 
 #include <iostream>
-
-#define DRAW
-//#define DRAWVEHICLE
-//#define CONFIG_ANALYSIS
 #endif
 
 namespace planner {
