@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   pcl_ros
 )
+
 find_package(Eigen REQUIRED)
 find_package(PCL REQUIRED QUIET COMPONENTS common)
 find_package(Qt4 REQUIRED COMPONENTS QtCore QtGui)
@@ -54,8 +55,10 @@ set( SRC_FILES_QT_UI_NODE src/decision_maker_ros.cpp ${MOC_FILES})
 QT4_WRAP_CPP(MOC_SRC_H_QT_UI_NODE ${HDR_FILES_QT_UI_NODE})
 
 ## Declare a cpp executable
-add_executable(decision_maker ${SRC_FILES_QT_UI_NODE} ${HDR_FILES_QT_UI_NODE}
-		${MOC_SRC_H_QT_UI_NODE} )
+add_executable(decision_maker
+  ${SRC_FILES_QT_UI_NODE}
+  ${HDR_FILES_QT_UI_NODE}
+  ${MOC_SRC_H_QT_UI_NODE} )
 
 target_link_libraries(decision_maker
    ${QT_LIBRARIES}

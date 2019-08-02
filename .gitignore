@@ -1,2 +1,5 @@
 build/
+py-bindings
 .registered
+
+.so

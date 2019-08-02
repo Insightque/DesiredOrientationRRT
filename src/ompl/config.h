@@ -52,7 +52,7 @@
 #define OMPL_EXTENSION_MORSE 0
 
 /** \brief Specify whether the OpenDE extension is built */
-#define OMPL_EXTENSION_OPENDE 1
+#define OMPL_EXTENSION_OPENDE 0
 
 #define OMPL_EXTENSION_CLOTHOID 0
 

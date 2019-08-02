@@ -8,5 +8,5 @@ Name: ompl
 Description: The Open Motion Planning Library
 Version: 1.2.1
 Requires: 
-Libs: -L${libdir} -lompl /usr/lib/x86_64-linux-gnu/libode.so /usr/lib/x86_64-linux-gnu/libboost_serialization.so /usr/lib/x86_64-linux-gnu/libboost_filesystem.so /usr/lib/x86_64-linux-gnu/libboost_system.so -lpthread
+Libs: -L${libdir} -lompl /usr/lib/x86_64-linux-gnu/libboost_serialization.so /usr/lib/x86_64-linux-gnu/libboost_filesystem.so /usr/lib/x86_64-linux-gnu/libboost_system.so -lpthread
 Cflags: -I${includedir}
