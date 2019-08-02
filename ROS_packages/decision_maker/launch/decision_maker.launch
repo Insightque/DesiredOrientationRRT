@@ -1,0 +1,7 @@
+<launch>
+  
+  <node pkg="decision_maker" type="decision_maker" name="decision_maker" output="screen">
+    <!-- comment(edward): parameters will be added here -->
+  </node>
+    
+</launch>
