@@ -83,6 +83,8 @@ class DecisionMaker {
 
   bool b_goal;
 
+  double CAR_C2R;
+
   vector<Vector2d> vObstacle;
 
   // Publishers & Subscribers

@@ -605,7 +605,7 @@ void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
   {
     cout <<"[+] RRTstar is selected for planning"<<endl;
     og::RRTstar *RRTstar = new og::RRTstar(ss->getSpaceInformation());
-    RRTstar->setRange(5.0);
+    // RRTstar->setRange(5.0);
     ss->setPlanner(ob::PlannerPtr(RRTstar));
   }
 
@@ -687,7 +687,9 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
                                                   msg->pose.position.y,
                                                   0);
 
-  GOAL_G[0] = goal.getX();
+  START_G[0] = -CAR_C2R;
+
+  GOAL_G[0] = goal.getX() - CAR_C2R;
   GOAL_G[1] = goal.getY();
   GOAL_G[2] = tf::getYaw(msg->pose.orientation);
   b_goal = true;
@@ -758,12 +760,12 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
 
 DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
 {
-  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(4, true)); // false: forward
+  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(3, true)); // false: forward
   ss_g = new og::SimpleSetup(g_space);
 
   b_DORRT_STAR = false;
 
-  PLANNINGTIME = 2.0;
+  PLANNINGTIME = 5.0;
   COSTTHRESHOLD = 0.0;
   RESOLUTION = 0.99;  // default: 0.3
 
@@ -776,6 +778,8 @@ DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
   GOAL_G[2] = 0.0;
 
   BOUNDS = new ob::RealVectorBounds(2);
+
+  CAR_C2R = 1.435;
 
   SAFEREGION = 0.5;
 
