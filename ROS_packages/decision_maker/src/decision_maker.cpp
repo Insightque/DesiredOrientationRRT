@@ -9,6 +9,8 @@ std::vector<pcl::PointXYZ> SearchNodeByRadius(pcl::PointXYZ searchPoint, float r
 
   std::vector<pcl::PointXYZ> pvNode;
 
+  if(dm->g_pTree->points.empty()) return pvNode;
+
   if( dm->g_kdTree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
   {
     for (size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
@@ -92,6 +94,8 @@ std::vector<pcl::PointXYZ> DecisionMaker::SearchNodeByRadius(pcl::PointXYZ searc
   std::vector<float> pointRadiusSquaredDistance;
 
   std::vector<pcl::PointXYZ> pvNode;
+
+  if(g_pTree->points.empty()) return pvNode;
 
   if(g_kdTree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance ) > 0 )
   {
@@ -605,7 +609,7 @@ void DecisionMaker::plan_init(og::SimpleSetup* ss,double* start, double* goal)
   {
     cout <<"[+] RRTstar is selected for planning"<<endl;
     og::RRTstar *RRTstar = new og::RRTstar(ss->getSpaceInformation());
-    // RRTstar->setRange(5.0);
+    RRTstar->setRange(5.0);
     ss->setPlanner(ob::PlannerPtr(RRTstar));
   }
 
@@ -641,6 +645,8 @@ void DecisionMaker::points_obstacle_registered_callback(const VPointCloud::Const
                                                         tf::TransformListener *listener,
                                                         tf::StampedTransform *transform_)
 {
+  unique_lock<mutex> lock(mutex_dm);
+
   try {
     listener->lookupTransform("odom", "camera", ros::Time(0), *transform_);
   }
@@ -659,14 +665,10 @@ void DecisionMaker::points_obstacle_registered_callback(const VPointCloud::Const
   if( g_pTree != NULL )
     g_pTree->clear();
 
-  g_pTree  = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
-
   for(int k=0; k<vObstacle.size(); k++)
   {
     g_pTree->push_back(pcl::PointXYZ(vObstacle[k](0), vObstacle[k](1), 0.0));
   }
-
-  g_kdTree.setInputCloud(g_pTree);
 }
 
 // /target_parking_space callback function
@@ -674,6 +676,8 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
                                                   tf::TransformListener *listener,
                                                   tf::StampedTransform *transform_)
 {
+  unique_lock<mutex> lock(mutex_dm);
+
   try {
     listener->lookupTransform("odom", "camera", ros::Time(0), *transform_);
   }
@@ -684,14 +688,14 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
   tf::Transform inv_transform = transform_->inverse();
 
   tf::Vector3 goal = inv_transform * tf::Vector3(msg->pose.position.x,
-                                                  msg->pose.position.y,
-                                                  0);
+                                                 msg->pose.position.y,
+                                                 0);
 
   START_G[0] = -CAR_C2R;
-
-  GOAL_G[0] = goal.getX() - CAR_C2R;
-  GOAL_G[1] = goal.getY();
   GOAL_G[2] = tf::getYaw(msg->pose.orientation);
+  GOAL_G[0] = goal.getX() - std::cos(GOAL_G[2])*CAR_C2R;
+  GOAL_G[1] = goal.getY() - std::sin(GOAL_G[2])*CAR_C2R;
+
   b_goal = true;
 
   // for custom blocking (C-shape)
@@ -715,9 +719,9 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
     VPoint vpt;
     VPointCloud block_cloud;
     tf::Vector3 pt;
-    for(int x=-12; x<5; x++) {
-      for(int y=-10; y<10; y++) {
-        if(0.2*y > 1.75 || 0.2*y < -1.75) {
+    for(int x=-20; x<5; x++) {
+      for(int y=-12; y<12; y++) {
+        if(0.2*y > 2.0 || 0.2*y < -2.0) {
           tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
           vpt.x = vp.getX();
           vpt.y = vp.getY();
@@ -726,7 +730,7 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
           pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
           vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
         }
-        else if(0.2*x < -2) {
+        else if(0.2*x < -2.5) {
           tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
           vpt.x = vp.getX();
           vpt.y = vp.getY();
@@ -743,8 +747,6 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
     if( g_pTree != NULL )
       g_pTree->clear();
 
-    g_pTree  = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
-
     for(int k=0; k<vObstacle.size(); k++)
     {
       g_pTree->push_back(pcl::PointXYZ(vObstacle[k](0), vObstacle[k](1), 0.0));
@@ -753,19 +755,21 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
     g_kdTree.setInputCloud(g_pTree);
 
     b_block=false;
-
     plan(b_goal);
   }
 }
 
 DecisionMaker::DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh)
 {
-  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(3, true)); // false: forward
+  g_space = ob::StateSpacePtr(new ob::DubinsStateSpace(4, true)); // false: forward
   ss_g = new og::SimpleSetup(g_space);
+
+  // comment(edward): should be initialized.
+  g_pTree = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
 
   b_DORRT_STAR = false;
 
-  PLANNINGTIME = 5.0;
+  PLANNINGTIME = 2.0;
   COSTTHRESHOLD = 0.0;
   RESOLUTION = 0.99;  // default: 0.3
 

@@ -36,6 +36,7 @@
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 
 #include <iostream>
+#include <mutex>
 #endif
 
 namespace planner {
@@ -96,6 +97,8 @@ class DecisionMaker {
 
   tf::TransformListener listener;
   tf::StampedTransform transform;
+
+  std::mutex mutex_dm;
  public:
   DecisionMaker(ros::NodeHandle nh, ros::NodeHandle priv_nh);
 
