@@ -719,9 +719,9 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
     VPoint vpt;
     VPointCloud block_cloud;
     tf::Vector3 pt;
-    for(int x=-20; x<5; x++) {
-      for(int y=-12; y<12; y++) {
-        if(0.2*y > 2.0 || 0.2*y < -2.0) {
+    for(int x=-30; x<5; x++) {
+      for(int y=-15; y<15; y++) {
+        if(0.2*y > 2.3 || 0.2*y < -2.3) {
           tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
           vpt.x = vp.getX();
           vpt.y = vp.getY();
@@ -730,7 +730,7 @@ void DecisionMaker::target_parking_space_callback(const geometry_msgs::PoseStamp
           pt = inv_transform * tf::Vector3(vp.getX(), vp.getY(), 0);
           vObstacle.push_back(Vector2d(pt.getX(), pt.getY()));
         }
-        else if(0.2*x < -2.5) {
+        else if(0.2*x < -3.5) {
           tf::Vector3 vp = tf_block * tf::Vector3(0.2*x, 0.2*y, 0);
           vpt.x = vp.getX();
           vpt.y = vp.getY();
