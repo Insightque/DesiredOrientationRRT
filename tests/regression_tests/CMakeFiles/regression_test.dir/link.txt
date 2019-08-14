@@ -1,1 +1,0 @@
-/usr/bin/c++   -O3 -O3 -DNDEBUG    CMakeFiles/regression_test.dir/RegressionTest.cpp.o  -o ../../bin/regression_test -rdynamic ../../lib/libompl.so.1.2.1 -lboost_filesystem -lboost_system -lode -lboost_serialization -lboost_filesystem -lboost_system -lpthread -Wl,-rpath,/home/shinsh/ompl-1.2.1-Source/lib 
